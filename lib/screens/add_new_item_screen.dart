@@ -18,10 +18,14 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
   var _enteredName = '';
   var _enteredQuantity = 0;
   var _enteredCategory = categories[Categories.vegetables];
+  var _isSending = false;
 
   void _saveItem() async {
     final isValid = _formKey.currentState!.validate();
     if (isValid) {
+      setState(() {
+        _isSending = true;
+      });
       _formKey.currentState!.save();
       final url = Uri.https('flutter-prep-9a614-default-rtdb.firebaseio.com',
           'shopping-list.json');
@@ -41,7 +45,7 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
 
       final responseData = json.decode(response.body);
 
-      if (!context.mounted) {
+      if (!mounted) {
         return;
       }
 
@@ -149,13 +153,21 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   ElevatedButton(
-                    onPressed: _saveItem,
-                    child: const Text('Done'),
+                    onPressed: _isSending ? null : _saveItem,
+                    child: _isSending
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(),
+                          )
+                        : const Text('Done'),
                   ),
                   TextButton(
-                    onPressed: () {
-                      _formKey.currentState!.reset();
-                    },
+                    onPressed: _isSending
+                        ? null
+                        : () {
+                            _formKey.currentState!.reset();
+                          },
                     child: const Text('Reset'),
                   ),
                 ],

@@ -16,19 +16,32 @@ class GroceriesScreen extends StatefulWidget {
 
 class _GroceriesScreenState extends State<GroceriesScreen> {
   List<GroceryItem> _groceriesItems = [];
+  late Future<List<GroceryItem>> _loadedItems;
+  String? _error;
 
   @override
   void initState() {
-    _loadItems();
+    _loadedItems = _loadItems();
     super.initState();
   }
 
-  void _loadItems() async {
+  Future<List<GroceryItem>> _loadItems() async {
     final url = Uri.https(
         'flutter-prep-9a614-default-rtdb.firebaseio.com', 'shopping-list.json');
+
     final response = await http.get(url);
+
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to fetch grocery items. Please try again later.');
+    }
+
+    if (response.body == 'null') {
+      return [];
+    }
+
     final Map<String, dynamic> decodedResponse = json.decode(response.body);
     final List<GroceryItem> loadedItems = [];
+
     for (final item in decodedResponse.entries) {
       final category = categories.entries
           .firstWhere(
@@ -41,9 +54,8 @@ class _GroceriesScreenState extends State<GroceriesScreen> {
         category: category,
       ));
     }
-    setState(() {
-      _groceriesItems = loadedItems;
-    });
+
+    return loadedItems;
   }
 
   void _addItem() async {
@@ -61,33 +73,38 @@ class _GroceriesScreenState extends State<GroceriesScreen> {
     });
   }
 
-  void _removeItem(GroceryItem item) {
+  void _removeItem(GroceryItem item) async {
+    final index = _groceriesItems.indexOf(item);
+    final url = Uri.https('flutter-prep-9a614-default-rtdb.firebaseio.com',
+        'shopping-list/${item.id}.json');
     setState(() {
       _groceriesItems.remove(item);
     });
+    final response = await http.delete(url);
+    if (response.statusCode >= 400) {
+      setState(() {
+        _groceriesItems.insert(index, item);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Something went wrong!'),
+          ),
+        );
+      });
+    } else {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Item deleted!'),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final content = _groceriesItems.isEmpty
-        ? const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'No items added yet.',
-                ),
-              ],
-            ),
-          )
-        : Column(
-            children: [
-              GroceriesList(
-                groceries: _groceriesItems,
-                onRemoveItem: _removeItem,
-              ),
-            ],
-          );
     return Scaffold(
       appBar: AppBar(
         title: const Text('Your Groceries'),
@@ -98,7 +115,46 @@ class _GroceriesScreenState extends State<GroceriesScreen> {
           ),
         ],
       ),
-      body: content,
+      body: FutureBuilder(
+          future: _loadedItems,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      snapshot.error.toString(),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              );
+            }
+            if (snapshot.data!.isEmpty) {
+              return const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'No items added yet.',
+                    ),
+                  ],
+                ),
+              );
+            }
+            return Column(
+              children: [
+                GroceriesList(
+                  groceries: snapshot.data!,
+                  onRemoveItem: _removeItem,
+                ),
+              ],
+            );
+          }),
     );
   }
 }
